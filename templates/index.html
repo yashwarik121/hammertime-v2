@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="HAMMERTIME — F1 Race Outcome Simulator. Monte Carlo simulations, live analytics, tyre strategy, and pre-race predictions for every Grand Prix.">
+  <meta name="theme-color" content="#0a0a0f">
+  <title>HAMMERTIME — F1 Race Outcome Simulator</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <!-- ═══════════ Loading Overlay ═══════════ -->
+  <div id="loading-overlay" class="loading-overlay">
+    <div class="loading-car">🏎️</div>
+    <div class="loading-text">Warming up engines…</div>
+    <div class="loading-bar"><div class="loading-bar-fill"></div></div>
+  </div>
+
+  <!-- ═══════════ Toast Container ═══════════ -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- ═══════════ Navigation ═══════════ -->
+  <nav class="nav" id="main-nav">
+    <div class="container">
+      <a href="#" class="nav-logo">
+        <span class="logo-icon">🏎️</span>
+        <span>HAMMER<span class="logo-accent">TIME</span></span>
+      </a>
+
+      <ul class="nav-links" id="nav-links">
+        <li><a href="#next-race" data-section="next-race">⏱️ Next Race</a></li>
+        <li><a href="#drivers" data-section="drivers">🏁 Drivers</a></li>
+        <li><a href="#simulator" data-section="simulator">⚡ Simulator</a></li>
+        <li><a href="#standings" data-section="standings">🏆 Standings</a></li>
+        <li><a href="#schedule" data-section="schedule">📅 Schedule</a></li>
+        <li><a href="#analytics" data-section="analytics">📊 Analytics</a></li>
+        <li><a href="#predictions" data-section="predictions">🔮 Predictions</a></li>
+      </ul>
+
+      <div class="nav-status" id="nav-status">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">Connecting…</span>
+      </div>
+
+      <button class="nav-hamburger" id="nav-hamburger" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ═══════════ Main Content ═══════════ -->
+  <main>
+
+    <!-- ─── Section: Next Race Countdown ─── -->
+    <section id="next-race" class="section next-race-section">
+      <div class="container">
+        <div class="next-race-hero">
+          <div class="next-race-badge"><span class="pulse-dot"></span> NEXT RACE</div>
+          <h2 class="next-race-name" id="next-race-name">Loading…</h2>
+          <p class="next-race-circuit" id="next-race-circuit">—</p>
+          <p class="next-race-date" id="next-race-date">—</p>
+          <p class="next-race-round" id="next-race-round">—</p>
+
+          <div class="countdown-grid" id="countdown-grid">
+            <div class="countdown-box">
+              <span class="countdown-digit" id="countdown-days">00</span>
+              <span class="countdown-label">DAYS</span>
+            </div>
+            <div class="countdown-sep">:</div>
+            <div class="countdown-box">
+              <span class="countdown-digit" id="countdown-hours">00</span>
+              <span class="countdown-label">HOURS</span>
+            </div>
+            <div class="countdown-sep">:</div>
+            <div class="countdown-box">
+              <span class="countdown-digit" id="countdown-mins">00</span>
+              <span class="countdown-label">MINS</span>
+            </div>
+            <div class="countdown-sep">:</div>
+            <div class="countdown-box">
+              <span class="countdown-digit" id="countdown-secs">00</span>
+              <span class="countdown-label">SECS</span>
+            </div>
+          </div>
+
+          <button class="btn-simulate next-race-sim-btn" id="next-race-simulate-btn">
+            ⚡ Simulate This Race
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <div class="container"><div class="racing-stripe"></div></div>
+
+    <!-- ─── Section: Recent Race Winners ─── -->
+    <section id="recent-winners" class="section">
+      <div class="container">
+        <div class="section-header">
+          <div>
+            <div class="section-title"><h2>Recent Race Winners</h2></div>
+            <p class="section-subtitle">Latest results from the {{ current_season }} season</p>
+          </div>
+        </div>
+        <div class="winners-grid" id="winners-grid">
+          <div class="empty-state">
+            <div class="empty-state-icon">🏆</div>
+            <p class="empty-state-text">Loading recent results…</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="container"><div class="racing-stripe"></div></div>
+
+    <!-- ─── Section: Driver Grid ─── -->
+    <section id="drivers" class="section">
+      <div class="container">
+        <div class="section-header">
+          <div>
+            <div class="section-title"><h2>Driver Grid</h2></div>
+            <p class="section-subtitle">{{ current_season }} Formula 1 World Championship</p>
+          </div>
+          <div class="driver-grid-controls">
+            <input type="text" class="search-input" id="driver-search" placeholder="Search drivers or teams…" autocomplete="off">
+          </div>
+        </div>
+        <div class="driver-grid" id="driver-grid">
+          <!-- Skeleton loaders (replaced by JS) -->
+          {% for i in range(20) %}
+          <div class="skeleton skeleton-card"></div>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <div class="container"><div class="racing-stripe"></div></div>
+
+    <!-- ─── Section: Race Simulator ─── -->
+    <section id="simulator" class="section">
+      <div class="container">
+        <div class="section-header">
+          <div>
+            <div class="section-title"><h2>Race Simulator</h2></div>
+            <p class="section-subtitle">Monte Carlo simulation with {{ n_simulations|default('10,000') }} iterations</p>
+          </div>
+        </div>
+
+        <div class="simulator-layout">
+          <!-- Controls -->
+          <div class="simulator-controls glass-card">
+            <div class="sim-control-group">
+              <label for="sim-circuit">Circuit</label>
+              <select id="sim-circuit" class="sim-select">
+                <option value="">Select a circuit…</option>
+              </select>
+            </div>
+
+            <div class="sim-control-group">
+              <div class="slider-container">
+                <div class="slider-header">
+                  <label for="sim-sc">Safety Car Probability</label>
+                  <span class="slider-value" id="sim-sc-value">35%</span>
+                </div>
+                <input type="range" id="sim-sc" min="0" max="100" value="35">
+              </div>
+            </div>
+
+            <div class="sim-control-group">
+              <div class="slider-container">
+                <div class="slider-header">
+                  <label for="sim-vsc">VSC Probability</label>
+                  <span class="slider-value" id="sim-vsc-value">25%</span>
+                </div>
+                <input type="range" id="sim-vsc" min="0" max="100" value="25">
+              </div>
+            </div>
+
+            <div class="sim-control-group">
+              <div class="slider-container">
+                <div class="slider-header">
+                  <label for="sim-rain">Rain Probability</label>
+                  <span class="slider-value" id="sim-rain-value">10%</span>
+                </div>
+                <input type="range" id="sim-rain" min="0" max="100" value="10">
+              </div>
+            </div>
+
+            <button class="btn-simulate" id="btn-simulate" disabled>
+              🏁 Run Simulation
+            </button>
+          </div>
+
+          <!-- Results Area -->
+          <div id="sim-results-area">
+            <div class="empty-state" id="sim-empty">
+              <div class="empty-state-icon">⚡</div>
+              <p class="empty-state-text">Select a circuit and run a simulation to see predicted race outcomes.</p>
+            </div>
+
+            <!-- Loading animation -->
+            <div class="sim-loading" id="sim-loading">
+              <div class="sim-loading-track">
+                <span class="sim-loading-car">🏎️</span>
+              </div>
+            </div>
+
+            <!-- Podium -->
+            <div class="podium-display" id="sim-podium" style="display:none;"></div>
+
+            <!-- Chart -->
+            <div class="sim-results-chart" id="sim-chart-wrap" style="display:none;">
+              <canvas id="sim-chart"></canvas>
+            </div>
+
+            <!-- Stats Summary -->
+            <div class="sim-stats-summary" id="sim-stats" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="container"><div class="racing-stripe"></div></div>
+
+    <!-- ─── Section: Standings ─── -->
+    <section id="standings" class="section">
+      <div class="container">
+        <div class="section-header">
+          <div>
+            <div class="section-title"><h2>Championship Standings</h2></div>
+            <p class="section-subtitle">Live points table — {{ current_season }} season</p>
+          </div>
+        </div>
+
+        <div class="standings-tabs" id="standings-tabs">
+          <button class="standings-tab active" data-tab="drivers">Drivers</button>
+          <button class="standings-tab" data-tab="constructors">Constructors</button>
+        </div>
+
+        <div class="standings-table-wrap" id="standings-drivers-wrap">
+          <table class="standings-table" id="standings-drivers-table">
+            <thead>
+              <tr>
+                <th data-sort="position">Pos</th>
+                <th data-sort="driver_name">Driver</th>
+                <th data-sort="team">Team</th>
+                <th data-sort="points">Points</th>
+                <th data-sort="wins">Wins</th>
+                <th data-sort="podiums">Podiums</th>
+                <th data-sort="dnfs">DNFs</th>
+              </tr>
+            </thead>
+            <tbody id="standings-drivers-body">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+
+        <div class="standings-table-wrap" id="standings-constructors-wrap" style="display:none;">
+          <table class="standings-table" id="standings-constructors-table">
+            <thead>
+              <tr>
+                <th data-sort="position">Pos</th>
+                <th data-sort="name">Team</th>
+                <th data-sort="points">Points</th>
+                <th data-sort="wins">Wins</th>
+              </tr>
+            </thead>
+            <tbody id="standings-constructors-body">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <div class="container"><div class="racing-stripe"></div></div>
+
+    <!-- ─── Section: Season Schedule ─── -->
+    <section id="schedule" class="section">
+      <div class="container">
+        <div class="section-header">
+          <div>
+            <div class="section-title"><h2>Season Schedule</h2></div>
+            <p class="section-subtitle">Full {{ current_season }} Formula 1 race calendar</p>
+          </div>
+        </div>
+        <div class="schedule-table-wrap">
+          <table class="schedule-table" id="schedule-table">
+            <thead>
+              <tr>
+                <th>Round</th>
+                <th>Race</th>
+                <th>Location</th>
+                <th>Date</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="schedule-body">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <div class="container"><div class="racing-stripe"></div></div>
+
+    <!-- ─── Section: Charts & Analytics ─── -->
+    <section id="analytics" class="section">
+      <div class="container">
+        <div class="section-header">
+          <div>
+            <div class="section-title"><h2>Charts &amp; Analytics</h2></div>
+            <p class="section-subtitle">Detailed lap-by-lap data, tyre strategies, and reliability metrics</p>
+          </div>
+        </div>
+
+        <div class="analytics-grid">
+          <!-- Lap Time Chart -->
+          <div class="chart-card full-width" id="laptimes-card">
+            <div class="chart-header">
+              <span class="chart-title">📈 Lap Time Progression</span>
+              <div class="chart-filters">
+                <select id="laptimes-driver" class="chart-filter-select"><option value="">Driver…</option></select>
+                <select id="laptimes-circuit" class="chart-filter-select"><option value="">Circuit…</option></select>
+                <button class="btn btn-secondary" id="laptimes-load">Load</button>
+              </div>
+            </div>
+            <div class="chart-body">
+              <canvas id="laptimes-chart"></canvas>
+              <div class="empty-state" id="laptimes-empty">
+                <p class="empty-state-text">Select a driver and circuit to view lap times.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tyre Heatmap -->
+          <div class="chart-card full-width" id="tyres-card">
+            <div class="chart-header">
+              <span class="chart-title">🔴🟡⚪ Tyre Strategy Heatmap</span>
+              <div class="chart-filters">
+                <select id="tyres-circuit" class="chart-filter-select"><option value="">Circuit…</option></select>
+                <button class="btn btn-secondary" id="tyres-load">Load</button>
+              </div>
+            </div>
+            <div class="chart-body tyre-heatmap-container">
+              <canvas id="tyres-heatmap"></canvas>
+              <div class="empty-state" id="tyres-empty">
+                <p class="empty-state-text">Select a circuit to view tyre strategies.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- DNF Gauge -->
+          <div class="chart-card" id="dnf-card">
+            <div class="chart-header">
+              <span class="chart-title">⚠️ DNF Risk</span>
+            </div>
+            <div class="chart-body">
+              <div class="dnf-gauges-grid" id="dnf-gauges"></div>
+            </div>
+          </div>
+
+          <!-- Radar Chart -->
+          <div class="chart-card" id="radar-card">
+            <div class="chart-header">
+              <span class="chart-title">🎯 Driver Performance Radar</span>
+              <div class="chart-filters">
+                <select id="radar-driver" class="chart-filter-select"><option value="">Driver…</option></select>
+              </div>
+            </div>
+            <div class="chart-body">
+              <canvas id="radar-chart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="container"><div class="racing-stripe"></div></div>
+
+    <!-- ─── Section: Pre-Race Prediction ─── -->
+    <section id="predictions" class="section">
+      <div class="container">
+        <div class="section-header">
+          <div>
+            <div class="section-title"><h2>Pre-Race Prediction</h2></div>
+            <p class="section-subtitle">AI-generated race predictions powered by XGBoost</p>
+          </div>
+        </div>
+
+        <div class="prediction-card" id="prediction-card">
+          <div class="prediction-header">
+            <div>
+              <h3 id="prediction-race-name">Loading…</h3>
+              <span class="prediction-badge">AI Prediction</span>
+            </div>
+            <div class="chart-filters">
+              <select id="prediction-circuit" class="chart-filter-select"><option value="">Select circuit…</option></select>
+              <button class="btn btn-secondary" id="prediction-export">📸 Export PNG</button>
+            </div>
+          </div>
+
+          <div class="prediction-grid" id="prediction-grid">
+            <div class="prediction-item">
+              <div class="prediction-item-label">Predicted Winner</div>
+              <div class="prediction-item-value" id="pred-winner">—</div>
+            </div>
+            <div class="prediction-item">
+              <div class="prediction-item-label">Predicted Podium</div>
+              <div class="prediction-item-value" id="pred-podium">—</div>
+            </div>
+            <div class="prediction-item">
+              <div class="prediction-item-label">Fastest Lap</div>
+              <div class="prediction-item-value" id="pred-fastest">—</div>
+            </div>
+            <div class="prediction-item">
+              <div class="prediction-item-label">Safety Cars</div>
+              <div class="prediction-item-value" id="pred-sc">—</div>
+            </div>
+            <div class="prediction-item">
+              <div class="prediction-item-label">Pit Stops (avg)</div>
+              <div class="prediction-item-value" id="pred-pits">—</div>
+            </div>
+          </div>
+
+          <div class="prediction-confidence" id="pred-confidence-wrap">
+            <span class="confidence-label">Model Confidence</span>
+            <div class="confidence-bar">
+              <div class="confidence-bar-fill" id="pred-confidence-bar" style="width:0%"></div>
+            </div>
+            <span class="confidence-value" id="pred-confidence-value">—</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ═══════════ Driver Detail Panel ═══════════ -->
+  <div class="driver-detail-overlay" id="driver-detail-overlay">
+    <div class="driver-detail-panel" id="driver-detail-panel">
+      <button class="detail-close" id="detail-close" aria-label="Close">&times;</button>
+
+      <div class="detail-hero" id="detail-hero">
+        <!-- Filled by JS -->
+      </div>
+
+      <div class="detail-stats-grid" id="detail-stats-grid">
+        <!-- Filled by JS -->
+      </div>
+
+      <h4 class="detail-section-title">Recent Results</h4>
+      <div class="detail-results-list" id="detail-results-list">
+        <!-- Filled by JS -->
+      </div>
+
+      <h4 class="detail-section-title">Head-to-Head vs Teammate</h4>
+      <div class="detail-chart-container" id="detail-h2h-wrap">
+        <canvas id="detail-h2h-chart"></canvas>
+      </div>
+
+      <button class="btn btn-primary" id="detail-simulate-btn" style="width:100%;justify-content:center;">
+        ⚡ Simulate Next Race
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══════════ Footer ═══════════ -->
+  <footer class="footer">
+    <div class="container">
+      <p>🏎️ <strong>HAMMERTIME</strong> — F1 Race Outcome Simulator &middot; Built with data from <a href="https://api.jolpi.ca" target="_blank">Jolpica</a> &amp; <a href="https://openf1.org" target="_blank">OpenF1</a></p>
+      <p style="margin-top:4px;">Monte Carlo · XGBoost · Chart.js · Made with ❤️ for motorsport</p>
+    </div>
+  </footer>
+
+  <!-- ═══════════ Scripts ═══════════ -->
+  <script src="/static/js/app.js"></script>
+  <script src="/static/js/drivers.js"></script>
+  <script src="/static/js/simulator.js"></script>
+  <script src="/static/js/charts.js"></script>
+  <script src="/static/js/schedule.js"></script>
+</body>
+</html>
