@@ -174,7 +174,7 @@ def simulate_race(
     vsc_prob: Optional[float] = None,
     rain_prob: Optional[float] = None,
 ) -> dict[str, Any]:
-    """Run a Monte Carlo race simulation.
+    """Run a Monte Carlo race simulation using a vectorized NumPy engine.
 
     Parameters
     ----------
@@ -201,7 +201,6 @@ def simulate_race(
     n_drivers = len(drivers)
 
     # ── Determine base lap time per driver ────────────────────────────────
-    # Try ML model first, else use heuristic ~90 seconds + offset
     reference_lap = 90.0  # fallback
     ml_pred = _try_predict_base_laptime(circuit_id, "VER", total_laps)
     if ml_pred is not None and 60 < ml_pred < 150:
@@ -215,147 +214,148 @@ def simulate_race(
         dtype=np.float64,
     )
 
-    # ── Pre-generate random numbers ───────────────────────────────────────
-    rng = np.random.default_rng(seed=None)  # truly random
+    rng = np.random.default_rng(seed=None)
 
-    # Results accumulators  (n_simulations × n_drivers)
+    # Results accumulators
     finish_positions = np.zeros((n_simulations, n_drivers), dtype=np.int32)
     dnf_flags = np.zeros((n_simulations, n_drivers), dtype=bool)
 
-    # Per-lap SC probability converted to per-lap: P(at least one SC in race) = sc_prob
-    # => per-lap prob = 1 - (1 - sc_prob)^(1/total_laps)
+    # SC/VSC per-lap probability
     sc_per_lap = 1.0 - (1.0 - sc_prob) ** (1.0 / total_laps) if sc_prob > 0 else 0.0
     vsc_per_lap = 1.0 - (1.0 - vsc_prob) ** (1.0 / total_laps) if vsc_prob > 0 else 0.0
 
-    # DNF per-lap probability (derived from per-race rate)
+    sc_active = np.zeros((n_simulations, total_laps), dtype=bool)
+    vsc_active = np.zeros((n_simulations, total_laps), dtype=bool)
+
+    sc_draws = rng.random(size=(n_simulations, total_laps)) < sc_per_lap
+    vsc_draws = rng.random(size=(n_simulations, total_laps)) < vsc_per_lap
+    vsc_draws = vsc_draws & ~sc_draws
+
+    # Resolve safety car durations
+    for s in range(n_simulations):
+        l = 0
+        while l < total_laps:
+            if sc_draws[s, l]:
+                duration = min(rng.integers(3, 6), total_laps - l)
+                sc_active[s, l : l + duration] = True
+                l += duration
+            elif vsc_draws[s, l]:
+                duration = min(rng.integers(1, 3), total_laps - l)
+                vsc_active[s, l : l + duration] = True
+                l += duration
+            else:
+                l += 1
+
+    # Choose strategy pool per simulation (wet vs dry)
+    is_wet_race = rng.random(size=n_simulations) < rain_prob
+    
+    # Pre-generate strategy indices for all simulations and drivers
+    strat_indices = np.zeros((n_simulations, n_drivers), dtype=np.int32)
+    wet_sims = np.where(is_wet_race)[0]
+    dry_sims = np.where(~is_wet_race)[0]
+
+    if len(wet_sims) > 0:
+        strat_indices[wet_sims] = rng.integers(0, len(_STRATEGIES_WET), size=(len(wet_sims), n_drivers))
+    if len(dry_sims) > 0:
+        strat_indices[dry_sims] = rng.integers(0, len(_STRATEGIES_DRY), size=(len(dry_sims), n_drivers))
+
+    # DNF per-lap probability
     dnf_per_lap = np.array(
         [
-            1.0
-            - (1.0 - BASE_DNF_RATE.get(
-                DRIVERS_2025[d]["team"], 0.06
-            ))
-            ** (1.0 / total_laps)
+            1.0 - (1.0 - BASE_DNF_RATE.get(DRIVERS_2025[d]["team"], 0.06)) ** (1.0 / total_laps)
             for d in drivers
         ]
     )
 
-    for sim in range(n_simulations):
-        # ── Choose strategy per driver ────────────────────────────────────
-        is_wet_race = rng.random() < rain_prob
-        strategy_pool = _STRATEGIES_WET if is_wet_race else _STRATEGIES_DRY
-        strat_indices = rng.integers(0, len(strategy_pool), size=n_drivers)
+    # Pre-generate noise for all driver laps
+    noise = rng.normal(0, 0.3, size=(n_drivers, n_simulations, total_laps))
 
-        # Cumulative race time per driver
-        race_time = np.zeros(n_drivers, dtype=np.float64)
-        alive = np.ones(n_drivers, dtype=bool)
+    # Pre-generate DNF laps
+    dnf_laps = np.zeros((n_drivers, n_simulations), dtype=np.int32)
+    for di in range(n_drivers):
+        dnf_laps[di] = rng.geometric(dnf_per_lap[di], size=n_simulations)
 
-        # Build stint schedule: for each driver, list of (start_lap, end_lap, compound)
-        stint_schedules: list[list[tuple[int, int, str]]] = []
-        for di in range(n_drivers):
-            n_stops, stints = strategy_pool[strat_indices[di]]
-            schedule: list[tuple[int, int, str]] = []
+    # Accumulator for total times
+    total_race_times = np.zeros((n_simulations, n_drivers), dtype=np.float64)
+
+    # Fuel effect: shape (total_laps,)
+    fuel_effect = -0.03 * np.arange(total_laps)
+
+    # Pre-generate pit time draws
+    pit_time_draws = rng.normal(PIT_STOP_MEAN, PIT_STOP_STD, size=(n_drivers, n_simulations, 5))
+    slow_draws = rng.random(size=(n_drivers, n_simulations, 5)) < PIT_STOP_SLOW_PROBABILITY
+    stint_vars = rng.normal(0, 1, size=(n_drivers, n_simulations, 5))
+
+    # Loop over drivers (vectorizing across simulations!)
+    for di, code in enumerate(drivers):
+        base_time = base_times[di]
+
+        comp_deltas = np.zeros((n_simulations, total_laps), dtype=np.float64)
+        comp_degs = np.zeros((n_simulations, total_laps), dtype=np.float64)
+        tyre_ages = np.zeros((n_simulations, total_laps), dtype=np.int32)
+        pit_time_offsets = np.zeros((n_simulations, total_laps), dtype=np.float64)
+
+        for s in range(n_simulations):
+            is_wet = is_wet_race[s]
+            strategy_pool = _STRATEGIES_WET if is_wet else _STRATEGIES_DRY
+            strat_idx = strat_indices[s, di]
+            n_stops, stints = strategy_pool[strat_idx]
+
             cum_lap = 0
             for si, (compound, frac) in enumerate(stints):
                 s_start = cum_lap + 1
                 if si == len(stints) - 1:
                     s_end = total_laps
                 else:
-                    s_end = min(total_laps, cum_lap + max(1, int(frac * total_laps + rng.normal(0, 1))))
-                schedule.append((s_start, s_end, compound))
+                    s_end = min(total_laps, cum_lap + max(1, int(frac * total_laps + stint_vars[di, s, si])))
+
+                stint_len = s_end - s_start + 1
+                laps_slice = slice(s_start - 1, s_end)
+                comp_deltas[s, laps_slice] = _COMPOUND_DELTA.get(compound, 0.0)
+                comp_degs[s, laps_slice] = _COMPOUND_DEG.get(compound, 0.04)
+                tyre_ages[s, laps_slice] = np.arange(1, stint_len + 1)
+
+                if si < len(stints) - 1 and s_end <= total_laps:
+                    pt = pit_time_draws[di, s, si]
+                    if slow_draws[di, s, si]:
+                        pt += PIT_STOP_SLOW_PENALTY
+                    pit_time_offsets[s, s_end - 1] = PIT_LANE_TIME + max(1.5, pt)
+
                 cum_lap = s_end
-            stint_schedules.append(schedule)
 
-        # ── Simulate lap by lap (vectorised across drivers) ───────────────
-        # Pre-determine SC/VSC events for entire race
-        sc_laps = rng.random(total_laps) < sc_per_lap
-        vsc_laps = rng.random(total_laps) < vsc_per_lap
-        # Avoid SC + VSC on same lap
-        vsc_laps = vsc_laps & ~sc_laps
+        # Calculate lap times
+        driver_lap_times = base_time + comp_deltas + comp_degs * tyre_ages + fuel_effect + noise[di] + pit_time_offsets
 
-        # SC lasts 3-5 laps, VSC lasts 1-2 laps
-        sc_active = np.zeros(total_laps, dtype=bool)
-        vsc_active = np.zeros(total_laps, dtype=bool)
-        l = 0
-        while l < total_laps:
-            if sc_laps[l]:
-                duration = min(rng.integers(3, 6), total_laps - l)
-                sc_active[l : l + duration] = True
-                l += duration
-            elif vsc_laps[l]:
-                duration = min(rng.integers(1, 3), total_laps - l)
-                vsc_active[l : l + duration] = True
-                l += duration
-            else:
-                l += 1
+        # Safety Car / VSC active penalties
+        driver_lap_times[sc_active] += SC_LAP_DURATION_PENALTY
+        driver_lap_times[vsc_active] += VSC_LAP_DURATION_PENALTY
 
-        for lap in range(total_laps):
-            lap_num = lap + 1  # 1-indexed
+        # Apply sanity floor
+        driver_lap_times = np.clip(driver_lap_times, 50.0, None)
 
-            # Fuel effect: ~0.03 s/lap lighter
-            fuel_effect = -0.03 * lap
+        # Total race times per simulation
+        sim_times = np.sum(driver_lap_times, axis=1)
 
-            # Per-driver lap time computation
-            for di in range(n_drivers):
-                if not alive[di]:
-                    continue
+        # Apply DNFs
+        dl = dnf_laps[di]
+        dnf_mask = dl <= total_laps
+        sim_times[dnf_mask] = np.inf
+        dnf_flags[:, di] = dnf_mask
 
-                # DNF check
-                if rng.random() < dnf_per_lap[di]:
-                    alive[di] = False
-                    dnf_flags[sim, di] = True
-                    race_time[di] = np.inf
-                    continue
+        total_race_times[:, di] = sim_times
 
-                # Find current stint
-                compound = "MEDIUM"
-                tyre_age_in_stint = lap_num
-                for s_start, s_end, comp in stint_schedules[di]:
-                    if s_start <= lap_num <= s_end:
-                        compound = comp
-                        tyre_age_in_stint = lap_num - s_start + 1
-                        break
+    # Rank drivers per simulation
+    orders = np.argsort(total_race_times, axis=1)
+    positions = np.zeros((n_simulations, n_drivers), dtype=np.int32)
+    rows = np.arange(n_simulations)[:, np.newaxis]
+    positions[rows, orders] = np.arange(1, n_drivers + 1)
 
-                # Base time + compound delta + degradation + fuel + noise
-                lap_time = base_times[di]
-                lap_time += _COMPOUND_DELTA.get(compound, 0.0)
-                lap_time += _COMPOUND_DEG.get(compound, 0.04) * tyre_age_in_stint
-                lap_time += fuel_effect
-                lap_time += rng.normal(0, 0.3)  # random variation
-
-                # SC / VSC penalties
-                if sc_active[lap]:
-                    lap_time += SC_LAP_DURATION_PENALTY
-                elif vsc_active[lap]:
-                    lap_time += VSC_LAP_DURATION_PENALTY
-
-                # Pit stop (on the lap a stint ends and next begins)
-                for si in range(len(stint_schedules[di]) - 1):
-                    if lap_num == stint_schedules[di][si][1]:
-                        pit_time = rng.normal(PIT_STOP_MEAN, PIT_STOP_STD)
-                        if rng.random() < PIT_STOP_SLOW_PROBABILITY:
-                            pit_time += PIT_STOP_SLOW_PENALTY
-                        lap_time += PIT_LANE_TIME + max(1.5, pit_time)
-                        break
-
-                race_time[di] += max(lap_time, 50.0)  # sanity floor
-
-        # ── Rank drivers ──────────────────────────────────────────────────
-        # DNF'd drivers get position n_drivers (last)
-        order = np.argsort(race_time)
-        positions = np.empty(n_drivers, dtype=np.int32)
-        positions[order] = np.arange(1, n_drivers + 1)
-        finish_positions[sim] = positions
-
-    # ═══════════════════════════════════════════════════════════════════════
     # Aggregate results
-    # ═══════════════════════════════════════════════════════════════════════
-
-    results: dict[str, Any] = {}
+    results = {}
     for di, code in enumerate(drivers):
-        pos_array = finish_positions[:, di]
+        pos_array = positions[:, di]
         dnf_array = dnf_flags[:, di]
 
-        # Position distribution (1-20)
         pos_dist = {}
         for p in range(1, n_drivers + 1):
             pos_dist[str(p)] = float(np.mean(pos_array == p))
@@ -397,7 +397,7 @@ def simulate_race(
 
 def get_pre_race_prediction(
     circuit_id: str,
-    n_simulations: int = 5000,
+    n_simulations: int = 1000,
 ) -> dict[str, Any]:
     """Quick prediction card for the frontend.
 

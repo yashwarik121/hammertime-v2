@@ -43,7 +43,7 @@ JOLPICA_BASE_URL = "https://api.jolpi.ca/ergast/f1"
 OPENF1_BASE_URL = "https://api.openf1.org/v1"
 
 # ─── Monte Carlo Parameters ───────────────────────────────────────────────────
-N_SIMULATIONS = 10_000
+N_SIMULATIONS = 1000
 DEFAULT_RACE_LAPS = 57  # Will be overridden per circuit
 
 # ─── Model Paths ───────────────────────────────────────────────────────────────

@@ -28,7 +28,6 @@ desktop.ini
 # Data & Cache (large files, regenerated at runtime)
 data/cache/
 data/processed/
-models/*.pkl
 
 # Logs
 *.log

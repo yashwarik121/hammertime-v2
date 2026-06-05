@@ -424,6 +424,21 @@ async def api_analytics_laptimes(
     if driver not in DRIVERS_2025:
         raise HTTPException(status_code=404, detail=f"Unknown driver: {driver}")
 
+    # Try static precalculated cache first
+    import json
+    precalc_path = STATIC_DIR / "precalculated" / f"{circuit.lower()}.json"
+    if precalc_path.exists():
+        try:
+            with open(precalc_path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            if data.get("year") == year:
+                laps = data.get("laps", {}).get(driver, [])
+                if laps:
+                    logger.info("Loaded laptimes for %s at %s from static precalculated cache", driver, circuit)
+                    return {"driver": driver, "circuit": circuit, "year": year, "laps": laps}
+        except Exception as exc:
+            logger.warning("Could not read precalculated file %s: %s", precalc_path, exc)
+
     try:
         from src.data_fetcher import fetch_session_laps, fetch_event_schedule
 
@@ -501,6 +516,21 @@ async def api_analytics_tyres(
     year: int = Query(default=LATEST_COMPLETED_SEASON),
 ):
     """Tyre strategy data for a circuit/year."""
+    # Try static precalculated cache first
+    import json
+    precalc_path = STATIC_DIR / "precalculated" / f"{circuit.lower()}.json"
+    if precalc_path.exists():
+        try:
+            with open(precalc_path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            if data.get("year") == year:
+                strategies = data.get("strategies", [])
+                if strategies:
+                    logger.info("Loaded tyre strategies for %s from static precalculated cache", circuit)
+                    return {"circuit": circuit, "year": year, "strategies": strategies}
+        except Exception as exc:
+            logger.warning("Could not read precalculated file %s: %s", precalc_path, exc)
+
     try:
         from src.data_fetcher import fetch_session_laps, fetch_event_schedule
 
@@ -508,6 +538,7 @@ async def api_analytics_tyres(
         if schedule is None:
             return {"circuit": circuit, "year": year, "strategies": []}
 
+        # Find matching GP
         target_round = None
         for _, row in schedule.iterrows():
             event_name = str(row.get("EventName", "")).lower()
