@@ -5,7 +5,7 @@
 
 'use strict';
 
-let allDrivers = [];
+// allDrivers is declared globally in app.js
 let h2hChart = null;
 
 /* ─── Init ───────────────────────────────────────────────────────────────────── */
@@ -40,7 +40,9 @@ function renderDriverCards(drivers) {
   grid.innerHTML = drivers.map((d, i) => {
     const color = utils.getTeamColor(d.team);
     const flag = utils.getFlag(d.nationality);
-    const pts = d.stats?.points ?? '—';
+    const pts = d.stats?.points ?? 0;
+    const wins = d.stats?.wins ?? 0;
+    const pos = d.stats?.position ?? '—';
     const headshot = d.headshot_url
       ? `<img class="driver-headshot" src="${utils.escapeHtml(d.headshot_url)}" alt="${utils.escapeHtml(d.name)}" onerror="this.replaceWith(createInitialsAvatar('${utils.escapeHtml(d.name)}','${color}'))">`
       : `<div class="driver-initials" style="background:${color}">${getInitials(d.name)}</div>`;
@@ -57,10 +59,23 @@ function renderDriverCards(drivers) {
             </div>
           </div>
         </div>
+        <div class="driver-card-stats">
+          <div class="driver-stat-mini">
+            <span class="stat-mini-label">PTS</span>
+            <span class="stat-mini-val">${pts}</span>
+          </div>
+          <div class="driver-stat-mini">
+            <span class="stat-mini-label">POS</span>
+            <span class="stat-mini-val">${pos !== '—' ? `P${pos}` : '—'}</span>
+          </div>
+          <div class="driver-stat-mini">
+            <span class="stat-mini-label">WINS</span>
+            <span class="stat-mini-val">${wins}</span>
+          </div>
+        </div>
         <div class="driver-card-footer">
-          <span class="driver-number">${d.number || ''}</span>
+          <span class="driver-number">#${d.number || ''}</span>
           <span class="driver-flag">${flag}</span>
-          <span class="driver-points">${pts} pts</span>
         </div>
       </div>`;
   }).join('');
@@ -111,7 +126,7 @@ function setupDriverSearch() {
 /* ─── Detail Panel ───────────────────────────────────────────────────────────── */
 function setupDetailPanel() {
   const overlay = document.getElementById('driver-detail-overlay');
-  const closeBtn = document.getElementById('detail-close');
+  const closeBtn = document.getElementById('detail-close-btn') || document.getElementById('detail-close');
 
   if (closeBtn) {
     closeBtn.addEventListener('click', closeDriverDetail);
@@ -133,15 +148,20 @@ function setupDetailPanel() {
   if (simBtn) {
     simBtn.addEventListener('click', () => {
       closeDriverDetail();
-      const simSection = document.getElementById('simulator');
-      if (simSection) simSection.scrollIntoView({ behavior: 'smooth' });
+      const simTab = document.querySelector('.nav-tab[data-section="simulator"]');
+      if (simTab) {
+        simTab.click();
+      }
     });
   }
 }
 
 function closeDriverDetail() {
   const overlay = document.getElementById('driver-detail-overlay');
-  if (overlay) overlay.classList.remove('open');
+  if (overlay) {
+    overlay.classList.remove('open');
+    overlay.classList.remove('active');
+  }
   document.body.style.overflow = '';
 }
 
@@ -151,10 +171,11 @@ async function openDriverDetail(code) {
   if (!overlay) return;
 
   overlay.classList.add('open');
+  overlay.classList.add('active');
   document.body.style.overflow = 'hidden';
 
   // Clear previous data
-  const hero = document.getElementById('detail-hero');
+  const hero = document.querySelector('.detail-hero') || document.getElementById('detail-hero');
   const statsGrid = document.getElementById('detail-stats-grid');
   const resultsList = document.getElementById('detail-results-list');
 
@@ -176,7 +197,7 @@ function renderDetailPanel(d) {
   const flag = utils.getFlag(d.nationality);
 
   // Hero
-  const hero = document.getElementById('detail-hero');
+  const hero = document.querySelector('.detail-hero') || document.getElementById('detail-hero');
   if (hero) {
     const imgHtml = d.headshot_url
       ? `<img src="${utils.escapeHtml(d.headshot_url)}" alt="${utils.escapeHtml(d.name)}" onerror="this.style.display='none'">`
@@ -195,15 +216,23 @@ function renderDetailPanel(d) {
   if (statsGrid) {
     statsGrid.innerHTML = `
       <div class="detail-stat">
-        <div class="detail-stat-value">${s.wins ?? '—'}</div>
+        <div class="detail-stat-value" style="color: var(--accent-cyan); font-weight: 800;">${s.points ?? 0}</div>
+        <div class="detail-stat-label">Points</div>
+      </div>
+      <div class="detail-stat">
+        <div class="detail-stat-value" style="color: var(--accent-amber);">${s.position ? `P${s.position}` : '—'}</div>
+        <div class="detail-stat-label">Standings Pos</div>
+      </div>
+      <div class="detail-stat">
+        <div class="detail-stat-value">${s.wins ?? 0}</div>
         <div class="detail-stat-label">Wins</div>
       </div>
       <div class="detail-stat">
-        <div class="detail-stat-value">${s.podiums ?? '—'}</div>
+        <div class="detail-stat-value">${s.podiums ?? 0}</div>
         <div class="detail-stat-label">Podiums</div>
       </div>
       <div class="detail-stat">
-        <div class="detail-stat-value">${s.dnfs ?? '—'}</div>
+        <div class="detail-stat-value">${s.dnfs ?? 0}</div>
         <div class="detail-stat-label">DNFs</div>
       </div>
       <div class="detail-stat">
@@ -302,7 +331,7 @@ async function initStandings() {
 }
 
 function setupStandingsTabs() {
-  const tabContainer = document.getElementById('standings-tabs');
+  const tabContainer = document.querySelector('.standings-tabs');
   if (!tabContainer) return;
 
   tabContainer.addEventListener('click', async (e) => {
@@ -312,7 +341,7 @@ function setupStandingsTabs() {
     tabContainer.querySelectorAll('.standings-tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
 
-    const tabId = tab.dataset.tab;
+    const tabId = tab.dataset.standings;
     document.getElementById('standings-drivers-wrap').style.display = tabId === 'drivers' ? '' : 'none';
     document.getElementById('standings-constructors-wrap').style.display = tabId === 'constructors' ? '' : 'none';
 
@@ -321,17 +350,29 @@ function setupStandingsTabs() {
     }
   });
 
-  // Sortable columns
-  document.querySelectorAll('.standings-table thead th[data-sort]').forEach(th => {
+  // Sortable columns (if data-sort or th are clicked)
+  document.querySelectorAll('.data-table thead th').forEach(th => {
+    th.style.cursor = 'pointer';
     th.addEventListener('click', () => {
-      const table = th.closest('.standings-table');
-      const key = th.dataset.sort;
+      const table = th.closest('.data-table');
+      if (!table) return;
       const tableId = table.id;
-
+      const colIndex = Array.from(th.parentNode.children).indexOf(th);
+      
+      // Map column index to keys
+      let key = 'position';
       if (tableId.includes('drivers')) {
-        sortAndRenderStandings(driverStandings, key, 'standings-drivers-body', 'driver');
+        if (colIndex === 1) key = 'driver_name';
+        else if (colIndex === 2) key = 'team';
+        else if (colIndex === 3) key = 'points';
+        else if (colIndex === 4) key = 'wins';
+        else if (colIndex === 5) key = 'podiums';
+        sortAndRenderStandings(driverStandings, key, 'drivers-standings-body', 'driver');
       } else {
-        sortAndRenderStandings(constructorStandings, key, 'standings-constructors-body', 'constructor');
+        if (colIndex === 1) key = 'name';
+        else if (colIndex === 2) key = 'points';
+        else if (colIndex === 3) key = 'wins';
+        sortAndRenderStandings(constructorStandings, key, 'constructors-standings-body', 'constructor');
       }
     });
   });
@@ -348,7 +389,7 @@ function sortAndRenderStandings(data, key, bodyId, type) {
     if (typeof valA === 'string') {
       return dir === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
     }
-    return dir === 'asc' ? valA - valB : valB - valA;
+    return dir === 'asc' ? (valA || 0) - (valB || 0) : (valB || 0) - (valA || 0);
   });
 
   if (type === 'driver') {
@@ -362,9 +403,10 @@ async function loadDriverStandings() {
   try {
     const resp = await api.get('/api/standings/drivers');
     driverStandings = resp.standings || resp || [];
-    renderDriverStandings(driverStandings, 'standings-drivers-body');
-  } catch {
-    document.getElementById('standings-drivers-body').innerHTML =
+    renderDriverStandings(driverStandings, 'drivers-standings-body');
+  } catch (err) {
+    console.error('Failed to load driver standings:', err);
+    document.getElementById('drivers-standings-body').innerHTML =
       '<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-muted)">Unable to load standings.</td></tr>';
   }
 }
@@ -399,9 +441,10 @@ async function loadConstructorStandings() {
   try {
     const resp = await api.get('/api/standings/constructors');
     constructorStandings = resp.standings || resp || [];
-    renderConstructorStandings(constructorStandings, 'standings-constructors-body');
-  } catch {
-    document.getElementById('standings-constructors-body').innerHTML =
+    renderConstructorStandings(constructorStandings, 'constructors-standings-body');
+  } catch (err) {
+    console.error('Failed to load constructor standings:', err);
+    document.getElementById('constructors-standings-body').innerHTML =
       '<tr><td colspan="4" style="text-align:center;padding:2rem;color:var(--text-muted)">Unable to load standings.</td></tr>';
   }
 }

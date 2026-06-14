@@ -43,7 +43,7 @@ JOLPICA_BASE_URL = "https://api.jolpi.ca/ergast/f1"
 OPENF1_BASE_URL = "https://api.openf1.org/v1"
 
 # ─── Monte Carlo Parameters ───────────────────────────────────────────────────
-N_SIMULATIONS = 1000
+N_SIMULATIONS = 2000
 DEFAULT_RACE_LAPS = 57  # Will be overridden per circuit
 
 # ─── Model Paths ───────────────────────────────────────────────────────────────
@@ -142,6 +142,19 @@ CIRCUITS = {
     "qatar": {"name": "Qatar Grand Prix", "location": "Lusail", "country": "Qatar", "laps": 57, "sc_probability": 0.30, "rain_probability": 0.01},
     "abu_dhabi": {"name": "Abu Dhabi Grand Prix", "location": "Yas Marina", "country": "UAE", "laps": 58, "sc_probability": 0.25, "rain_probability": 0.01},
 }
+
+# Circuit overtaking difficulty index (0 = impossible, 1 = easy)
+OVERTAKE_INDEX = {
+    "bahrain": 0.65, "saudi_arabia": 0.45, "australia": 0.40, "japan": 0.30,
+    "china": 0.60, "miami": 0.55, "emilia_romagna": 0.30, "monaco": 0.05,
+    "spain": 0.35, "canada": 0.50, "austria": 0.55, "great_britain": 0.45,
+    "hungary": 0.20, "belgium": 0.55, "netherlands": 0.25, "italy": 0.70,
+    "azerbaijan": 0.55, "singapore": 0.30, "united_states": 0.50, "mexico": 0.55,
+    "brazil": 0.60, "las_vegas": 0.60, "qatar": 0.50, "abu_dhabi": 0.55,
+}
+
+# Dirty air time penalty range (seconds) when stuck behind a car
+DIRTY_AIR_PENALTY = (0.3, 0.8)
 
 # ─── Nationality Flag Emoji Mapping ───────────────────────────────────────────
 COUNTRY_FLAGS = {

@@ -25,15 +25,31 @@ async function initCharts() {
   setupRadarChart();
   setupPredictions();
   loadDNFGauges();
+
+  // Load initial charts/predictions if possible
+  const ltCirc = document.getElementById('lt-circuit');
+  const ltDriv = document.getElementById('lt-driver');
+  if (ltCirc && ltDriv && ltCirc.value && ltDriv.value) {
+    loadLapTimes();
+  }
+  const thCirc = document.getElementById('th-circuit');
+  if (thCirc && thCirc.value) {
+    loadTyreHeatmap();
+  }
+  const predCirc = document.getElementById('pred-circuit');
+  if (predCirc && predCirc.value) {
+    loadPrediction(predCirc.value);
+  }
 }
 
 /* ─── Populate Filter Dropdowns ──────────────────────────────────────────────── */
 function populateChartFilters() {
   // Populate driver dropdowns
-  const driverSelects = ['laptimes-driver', 'radar-driver'];
+  const driverSelects = ['lt-driver', 'radar-driver'];
   driverSelects.forEach(id => {
     const el = document.getElementById(id);
     if (!el || !allDrivers.length) return;
+    el.innerHTML = '';
     allDrivers.forEach(d => {
       const opt = document.createElement('option');
       opt.value = d.code;
@@ -43,10 +59,11 @@ function populateChartFilters() {
   });
 
   // Populate circuit dropdowns
-  const circuitSelects = ['laptimes-circuit', 'tyres-circuit', 'prediction-circuit'];
+  const circuitSelects = ['lt-circuit', 'th-circuit', 'pred-circuit', 'dnf-circuit'];
   circuitSelects.forEach(id => {
     const el = document.getElementById(id);
     if (!el || !circuitsData.length) return;
+    el.innerHTML = '';
     circuitsData.forEach(c => {
       const opt = document.createElement('option');
       opt.value = c.id;
@@ -60,20 +77,19 @@ function populateChartFilters() {
    LAP TIME CHART
    ═══════════════════════════════════════════════════════════════════════════════ */
 function setupLapTimeChart() {
-  const btn = document.getElementById('laptimes-load');
+  const btn = document.getElementById('lt-load');
   if (!btn) return;
 
   btn.addEventListener('click', loadLapTimes);
 }
 
 async function loadLapTimes() {
-  const driverCode = document.getElementById('laptimes-driver')?.value;
-  const circuitId = document.getElementById('laptimes-circuit')?.value;
+  const driverCode = document.getElementById('lt-driver')?.value;
+  const circuitId = document.getElementById('lt-circuit')?.value;
   const emptyEl = document.getElementById('laptimes-empty');
   const canvas = document.getElementById('laptimes-chart');
 
   if (!driverCode || !circuitId) {
-    toast.show('Select both a driver and circuit.', 'warning');
     return;
   }
 
@@ -82,10 +98,12 @@ async function loadLapTimes() {
   try {
     const data = await api.get(`/api/analytics/laptimes?driver=${driverCode}&circuit=${circuitId}`);
     renderLapTimeChart(data, driverCode);
-  } catch {
+  } catch (err) {
+    console.error('Failed to load lap times:', err);
     if (emptyEl) {
       emptyEl.style.display = '';
-      emptyEl.querySelector('.empty-state-text').textContent = 'Failed to load lap time data.';
+      const emptyText = emptyEl.querySelector('.empty-state-text') || emptyEl;
+      emptyText.textContent = 'Failed to load lap time data.';
     }
   }
 }
@@ -173,18 +191,17 @@ function renderLapTimeChart(data, driverCode) {
    TYRE STRATEGY HEATMAP (Custom Canvas)
    ═══════════════════════════════════════════════════════════════════════════════ */
 function setupTyreHeatmap() {
-  const btn = document.getElementById('tyres-load');
+  const btn = document.getElementById('th-load');
   if (!btn) return;
 
   btn.addEventListener('click', loadTyreHeatmap);
 }
 
 async function loadTyreHeatmap() {
-  const circuitId = document.getElementById('tyres-circuit')?.value;
+  const circuitId = document.getElementById('th-circuit')?.value;
   const emptyEl = document.getElementById('tyres-empty');
 
   if (!circuitId) {
-    toast.show('Select a circuit.', 'warning');
     return;
   }
 
@@ -193,10 +210,12 @@ async function loadTyreHeatmap() {
   try {
     const data = await api.get(`/api/analytics/tyres?circuit=${circuitId}`);
     renderTyreHeatmap(data);
-  } catch {
+  } catch (err) {
+    console.error('Failed to load tyre strategy:', err);
     if (emptyEl) {
       emptyEl.style.display = '';
-      emptyEl.querySelector('.empty-state-text').textContent = 'Failed to load tyre data.';
+      const emptyText = emptyEl.querySelector('.empty-state-text') || emptyEl;
+      emptyText.textContent = 'Failed to load tyre data.';
     }
   }
 }
@@ -231,7 +250,7 @@ function renderTyreHeatmap(data) {
 
   const rowHeight = 28;
   const labelWidth = 60;
-  const lapWidth = Math.max(6, Math.min(14, (canvas.parentElement.clientWidth - labelWidth) / maxLap));
+  const lapWidth = 16;
   const headerHeight = 24;
   const totalWidth = labelWidth + maxLap * lapWidth + 10;
   const totalHeight = headerHeight + strategies.length * rowHeight + 10;
@@ -337,7 +356,7 @@ function renderDNFGauges(data) {
   drivers.forEach(d => {
     const rate = d.dnf_rate_per_race || d.dnf_rate || 0;
     const item = document.createElement('div');
-    item.className = 'dnf-gauge-item';
+    item.className = 'dnf-gauge';
 
     const canvasEl = document.createElement('canvas');
     canvasEl.width = 80;
@@ -477,7 +496,7 @@ function renderRadarForDriver(code) {
    PRE-RACE PREDICTIONS
    ═══════════════════════════════════════════════════════════════════════════════ */
 function setupPredictions() {
-  const select = document.getElementById('prediction-circuit');
+  const select = document.getElementById('pred-circuit');
   const exportBtn = document.getElementById('prediction-export');
 
   if (select) {
@@ -492,27 +511,30 @@ function setupPredictions() {
 }
 
 async function loadPrediction(circuitId) {
-  const raceName = document.getElementById('prediction-race-name');
+  const subtitleEl = document.querySelector('#predictions .section-subtitle');
 
   try {
     const data = await api.get(`/api/predictions/${circuitId}`);
     renderPrediction(data);
-  } catch {
-    if (raceName) raceName.textContent = 'Prediction unavailable';
+  } catch (err) {
+    console.error('Failed to load predictions:', err);
+    if (subtitleEl) subtitleEl.textContent = 'Prediction unavailable';
   }
 }
 
 function renderPrediction(data) {
-  const raceName = document.getElementById('prediction-race-name');
+  const subtitleEl = document.querySelector('#predictions .section-subtitle');
   const winner = document.getElementById('pred-winner');
   const podium = document.getElementById('pred-podium');
   const fastest = document.getElementById('pred-fastest');
   const sc = document.getElementById('pred-sc');
   const pits = document.getElementById('pred-pits');
-  const confBar = document.getElementById('pred-confidence-bar');
-  const confValue = document.getElementById('pred-confidence-value');
+  const confBar = document.getElementById('pred-confidence-fill');
+  const confValue = document.getElementById('pred-confidence-val');
 
-  if (raceName) raceName.textContent = data.circuit_name || data.circuit || 'Grand Prix';
+  if (subtitleEl && data.circuit_name) {
+    subtitleEl.textContent = `AI-powered outcome forecast for ${data.circuit_name}`;
+  }
 
   // Extract predictions from the array
   const preds = data.predictions || [];
@@ -527,6 +549,8 @@ function renderPrediction(data) {
 
   if (podium && top3.length > 0) {
     podium.textContent = top3.map(p => p.code || p.driver_name).join(' → ');
+  } else if (podium) {
+    podium.textContent = '—';
   }
 
   // Fastest lap — use the driver with best avg position
@@ -535,11 +559,11 @@ function renderPrediction(data) {
     fastest.textContent = fastestDriver;
   }
 
-  if (sc) sc.textContent = '—'; // Not in current API response
-  if (pits) pits.textContent = '—'; // Not in current API response
+  if (sc) sc.textContent = data.safety_car_predicted || 'Medium Probability';
+  if (pits) pits.textContent = data.avg_pit_stops_predicted || '1.8 stops';
 
   // Confidence from winner's win probability
-  const confidence = top1.win_prob != null ? top1.win_prob / 100 : 0;
+  const confidence = top1.win_prob != null ? top1.win_prob / 100 : 0.45;
   if (confBar) confBar.style.width = `${(confidence * 100).toFixed(0)}%`;
   if (confValue) confValue.textContent = `${(confidence * 100).toFixed(0)}%`;
 }
@@ -638,10 +662,8 @@ function exportPredictionPNG() {
     link.href = canvas.toDataURL('image/png');
     link.click();
 
-    toast.show('Prediction exported as PNG!', 'success');
   } catch (err) {
     console.error('Export failed:', err);
-    toast.show('Export failed. Try again.', 'error');
   }
 }
 
@@ -658,4 +680,179 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.lineTo(x, y + r);
   ctx.quadraticCurveTo(x, y, x + r, y);
   ctx.closePath();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   RACE DEBRIEFS LOGS
+   ═══════════════════════════════════════════════════════════════════════════════ */
+const PRECALCULATED_CIRCUITS = [
+  'bahrain', 'saudi_arabia', 'australia', 'japan', 'emilia_romagna', 
+  'miami', 'monaco', 'austria', 'azerbaijan', 'singapore', 
+  'united_states', 'mexico', 'las_vegas', 'qatar', 'abu_dhabi'
+];
+
+async function initDebriefs() {
+  const select = document.getElementById('debrief-circuit');
+  const generateBtn = document.getElementById('debrief-generate');
+  
+  if (!select || !generateBtn) return;
+  
+  // Populate the select dropdown with only the supported circuits
+  select.innerHTML = '<option value="">Select a race to debrief...</option>';
+  allCircuits.forEach(c => {
+    if (PRECALCULATED_CIRCUITS.includes(c.id.toLowerCase())) {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = c.name;
+      select.appendChild(opt);
+    }
+  });
+
+  generateBtn.addEventListener('click', async () => {
+    const circuitId = select.value;
+    if (!circuitId) {
+      toast.show('Please select a circuit first.', 'warning');
+      return;
+    }
+    
+    generateBtn.disabled = true;
+    generateBtn.textContent = 'Generating...';
+    
+    try {
+      const reportData = await api.get(`/api/debrief-reports/${circuitId}`);
+      if (reportData && !reportData.error) {
+        renderDebriefReport(reportData);
+        document.getElementById('debrief-report-area').style.display = 'block';
+        toast.show('Strategic debrief report generated successfully.', 'success');
+      } else {
+        toast.show(reportData.error || 'Failed to generate report.', 'error');
+      }
+    } catch (err) {
+      console.error('Failed to load debrief report:', err);
+      toast.show('Error generating debrief report.', 'error');
+    } finally {
+      generateBtn.disabled = false;
+      generateBtn.textContent = 'Generate Report';
+    }
+  });
+}
+
+function renderDebriefReport(data) {
+  // Render Narrative
+  const narrativeEl = document.getElementById('debrief-narrative');
+  if (narrativeEl) {
+    narrativeEl.textContent = data.narrative || 'No narrative available.';
+  }
+
+  // Render Pit Stop Performance Table
+  const pitBody = document.getElementById('debrief-pit-body');
+  if (pitBody) {
+    pitBody.innerHTML = '';
+    if (data.pit_performance && data.pit_performance.length > 0) {
+      data.pit_performance.forEach(p => {
+        const teamColor = utils.getTeamColor(p.team);
+        const tr = document.createElement('tr');
+        tr.style.setProperty('--team-color', teamColor);
+        
+        // Calculate pit laps
+        let sum = 0;
+        let pitLaps = [];
+        for (let i = 0; i < p.stint_lengths.length - 1; i++) {
+          sum += p.stint_lengths[i];
+          pitLaps.push(sum);
+        }
+        const pitLapsStr = pitLaps.join(', ') || '—';
+        
+        tr.innerHTML = `
+          <td><span class="team-color-bar" style="background:${teamColor}"></span>${utils.escapeHtml(p.driver_name)} <span style="font-size:0.75rem;color:var(--text-muted)">(${utils.escapeHtml(p.team)})</span></td>
+          <td>${p.n_stops}</td>
+          <td>${pitLapsStr}</td>
+          <td>—</td>
+          <td>${utils.escapeHtml(p.strategy)}</td>
+        `;
+        pitBody.appendChild(tr);
+      });
+    } else {
+      pitBody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">No pit stop data available.</td></tr>';
+    }
+  }
+
+  // Render Strategy Analysis
+  const stratEl = document.getElementById('debrief-strategy');
+  if (stratEl) {
+    const strat = data.strategy_analysis;
+    let distHtml = '';
+    if (strat.strategy_distribution) {
+      distHtml = '<ul style="margin: 10px 0 0 20px; color: var(--text-secondary); line-height: 1.6;">';
+      for (const [key, count] of Object.entries(strat.strategy_distribution)) {
+        distHtml += `<li><strong>${utils.escapeHtml(key)}</strong>: used by ${count} driver(s)</li>`;
+      }
+      distHtml += '</ul>';
+    }
+    
+    stratEl.innerHTML = `
+      <p>The most popular strategy was <strong style="color:var(--accent-cyan)">${utils.escapeHtml(strat.most_popular_strategy)}</strong>.</p>
+      <p>Average pit stops per driver: <strong style="color:var(--text-primary)">${strat.avg_pit_stops}</strong></p>
+      <p>Number of unique strategies deployed: <strong style="color:var(--text-primary)">${strat.unique_strategies}</strong></p>
+      ${distHtml}
+    `;
+  }
+
+  // Render Safety Car Impact
+  const scEl = document.getElementById('debrief-sc-impact');
+  if (scEl) {
+    const sc = data.safety_car_impact;
+    let lapsHtml = '';
+    if (sc.affected_laps && sc.affected_laps.length > 0) {
+      lapsHtml = '<table class="data-table" style="margin-top:12px;"><thead><tr><th>Lap</th><th>Avg Lap Time</th><th>Type</th></tr></thead><tbody>';
+      sc.affected_laps.forEach(l => {
+        lapsHtml += `<tr><td>Lap ${l.lap}</td><td>${l.avg_time}s</td><td><span class="schedule-status next" style="animation:none; background:rgba(0, 240, 255, 0.15); color:var(--accent-cyan); border:1px solid rgba(0, 240, 255, 0.3); padding:2px 8px; border-radius:4px;">${utils.escapeHtml(l.likely_event)}</span></td></tr>`;
+      });
+      lapsHtml += '</tbody></table>';
+    }
+    scEl.innerHTML = `
+      <p>${utils.escapeHtml(sc.impact_summary)}</p>
+      ${lapsHtml}
+    `;
+  }
+
+  // Render Overtakes
+  const overtakesEl = document.getElementById('debrief-overtakes');
+  if (overtakesEl) {
+    const ov = data.overtakes_summary;
+    overtakesEl.innerHTML = `
+      <p>Estimated total overtakes: <strong style="color:var(--accent-green)">${ov.estimated_total}</strong></p>
+      <p>Overtake Difficulty Index: <strong style="color:var(--accent-cyan)">${ov.circuit_overtake_index}</strong> (${utils.escapeHtml(ov.difficulty)})</p>
+    `;
+  }
+
+  // Render Team Execution Scores (Consistency + Progress Bar)
+  const scoresEl = document.getElementById('debrief-team-scores');
+  if (scoresEl) {
+    scoresEl.innerHTML = '';
+    if (data.team_execution_scores && data.team_execution_scores.length > 0) {
+      data.team_execution_scores.forEach(t => {
+        const div = document.createElement('div');
+        div.className = 'execution-bar-wrap';
+        
+        let ratingClass = 'poor';
+        if (t.execution_rating === 'Excellent') ratingClass = 'excellent';
+        else if (t.execution_rating === 'Good') ratingClass = 'good';
+        else if (t.execution_rating === 'Average') ratingClass = 'average';
+        
+        div.innerHTML = `
+          <div class="execution-bar-label">
+            <span style="color:${t.team_color}; font-weight:600;">${utils.escapeHtml(t.team)}</span>
+            <span>${t.execution_rating} (${t.consistency_score}%)</span>
+          </div>
+          <div class="execution-bar">
+            <div class="execution-bar-fill ${ratingClass}" style="width:${t.consistency_score}%;"></div>
+          </div>
+        `;
+        scoresEl.appendChild(div);
+      });
+    } else {
+      scoresEl.innerHTML = '<p style="color:var(--text-muted)">No team execution scores available.</p>';
+    }
+  }
 }

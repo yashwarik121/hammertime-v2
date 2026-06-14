@@ -342,6 +342,7 @@ async def fetch_race_results_async(
                         "code": driver.get("code", ""),
                         "driver_name": f"{driver.get('givenName', '')} {driver.get('familyName', '')}",
                         "team": constructor.get("name", ""),
+                        "fastest_lap_rank": res.get("FastestLap", {}).get("rank", None) if isinstance(res.get("FastestLap"), dict) else None,
                     }
                 )
         save_to_cache(ck, result)

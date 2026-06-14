@@ -71,8 +71,7 @@ function renderSeasonComplete() {
 function renderNextRaceError() {
   const nameEl = document.getElementById('next-race-name');
   if (nameEl) nameEl.textContent = 'Unable to load';
-
-  toast.show('Failed to load race calendar.', 'error');
+  console.error('Failed to load race calendar.');
 }
 
 /* ─── Countdown Timer ────────────────────────────────────────────────────────── */
@@ -162,7 +161,7 @@ async function loadRecentWinners() {
         <div class="empty-state-icon">🏆</div>
         <p class="empty-state-text">Unable to load recent results.</p>
       </div>`;
-    toast.show('Failed to load recent results.', 'error');
+    console.error('Failed to load recent results.');
   }
 }
 
@@ -233,7 +232,7 @@ async function loadSeasonSchedule() {
   } catch {
     tbody.innerHTML =
       '<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-muted)">Unable to load season schedule.</td></tr>';
-    toast.show('Failed to load season schedule.', 'error');
+    console.error('Failed to load season schedule.');
   }
 }
 
