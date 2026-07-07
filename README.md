@@ -20,3 +20,4 @@ Stack: FastAPI, XGBoost, NumPy, Chart.js, Vanilla JS
 shitcoded by @warriikkk
 
 x7qm
+k3vn
